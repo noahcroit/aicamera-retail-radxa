@@ -222,7 +222,7 @@ if __name__ == "__main__":
     )
     worker.start()
     
-    cap = cv2.VideoCapture(1)
+    cap = cv2.VideoCapture("/dev/video11")
     print("Real-time Face Recognition Started!")
     print("Press 'q' to quit")
     
