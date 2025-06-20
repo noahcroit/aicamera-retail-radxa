@@ -1,6 +1,7 @@
 
 import multiprocessing  # <-- Added for multiprocessing
-
+import time
+import json
 from deepface import DeepFace
 import cv2
 import matplotlib.pyplot as plt
@@ -8,6 +9,7 @@ import numpy as np
 from numpy.linalg import norm
 from ultralytics import YOLO
 import tensorflow as tf
+import paho.mqtt.client as mqtt
 
 def extract_detected_objects(image, results):
     object_data = []  # List to store detected objects and their details
@@ -198,6 +200,93 @@ def process_new_face_worker(data_in_queue, data_out_queue):
         result = process_new_face(face, known_faces_list)
         data_out_queue.put(result)
 
+def generate_userattribute_json(l_userattr, epoch_enter, epoch_exit):
+    # find the average value of each field of user attributes
+    l_age = []
+    l_gender = []
+    l_emotion = []
+    l_race = []
+    try:
+        for userattr in l_userattr:
+            age = userattr['age']
+            gender = userattr['gender']
+            emotion = userattr['emotion']
+            race = userattr['race']
+            if age:
+                l_age.append(age)
+            if gender:
+                l_gender.append(gender)
+            if emotion:
+                l_emotion.append(emotion)
+            if race:
+                l_race.append(race)
+        from statistics import mode
+        age_avg = mode(l_age)
+        gender_avg = mode(l_gender)
+        emotion_avg = mode(l_emotion)
+        race_avg = mode(l_race)
+
+        # generate JSON
+        d_userattr = {
+            "epoch_enter": epoch_enter,
+            "age": age_avg,
+            "gender": gender_avg,
+            "emotion": emotion_avg,
+            "race": race_avg,
+            "epoch_exit": epoch_exit
+        }
+        json_userattr = json.dumps(d_userattr, indent=4)
+        return json_userattr
+    except:
+        return None
+
+# Callback function for when the client connects to the MQTT broker
+def on_connect(client, userdata, flags, rc):
+    """
+    Called when the client connects to the broker.
+    rc (return code) = 0 for success.
+    """
+    if rc == 0:
+        print(f"Successfully connected to MQTT Broker")
+    else:
+        print(f"Failed to connect, return code %d\n" % rc)
+
+def publish2mqtt(json_userattr):
+    if json_userattr:
+        BROKER_ADDRESS = "192.168.1.37"
+        BROKER_PORT = 1883 # Standard unencrypted MQTT port
+        MQTT_TOPIC = "aicamera/userattr" # Choose a unique topic to avoid collisions
+        # Create a new MQTT client instance
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "python_publisher_client")
+        # Assign the on_connect callback function
+        client.on_connect = on_connect
+        try:
+            # Connect to the MQTT broker
+            print(f"Attempting to connect to MQTT broker at {BROKER_ADDRESS}:{BROKER_PORT}...")
+            client.connect(BROKER_ADDRESS, BROKER_PORT, 60) # 60 seconds keepalive
+
+            # Start a loop to process network traffic and callbacks
+            # This is non-blocking and allows for other tasks while connected.
+            client.loop_start()
+
+            # Publish the JSON string to the MQTT topic
+            print(f"\nPublishing message to topic: {MQTT_TOPIC}")
+            print("Payload:\n", json_userattr)
+            client.publish(MQTT_TOPIC, json_userattr)
+            print("Message published.")
+            time.sleep(0.2)
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+        finally:
+            # Stop the network loop and disconnect from the broker
+            if client:
+                client.loop_stop()
+                client.disconnect()
+                print("Disconnected from MQTT broker.") 
+
+
+
 # In the main loop, modify these parts:
 if __name__ == "__main__":
     known_tracking_ids = set()
@@ -223,16 +312,17 @@ if __name__ == "__main__":
     )
     worker.start()
     
-    cap = cv2.VideoCapture("/dev/video11")
+    #cap = cv2.VideoCapture("/dev/video11")
+    cap = cv2.VideoCapture("/dev/v4l/by-id/usb-046d_C922_Pro_Stream_Webcam_5B3499FF-video-index0")
     print("Real-time Face Recognition Started!")
     print("Press 'q' to quit")
     
     # Load YOLOv11 face detection model
     #model = YOLO('pretrained-models/yolov11n-face.pt', verbose=False)
-    model = YOLO('pretrained-models/yolov11n-face_rknn_model', verbose=False) 
+    model = YOLO('ref/pretrained-models/yolov11n-face_rknn_model', verbose=False) 
     
-    flag_new_face = False
-
+    
+    state = 'enter'
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -266,6 +356,12 @@ if __name__ == "__main__":
                 women_count = women_count + 1
 
         if len(faces) > 0:
+            if state == 'enter':
+                epoch_enter = time.time()
+                print("enter time=", epoch_enter)
+                state = 'exit'
+                l_userattr = []
+
             for face in faces:
                 # Find face center point
                 face_center = find_bounding_box_center(face["bounding_box"])
@@ -279,9 +375,6 @@ if __name__ == "__main__":
                         known_tracking_ids.add(face["tracking_id"])
                         process_new_face_data_in_queue.put(face)
                         
-                        # Put flag for new face detection
-                        flag_new_face = True
-
                 recognized_id = None
                 recognition_conf = None
                 age = None
@@ -298,18 +391,20 @@ if __name__ == "__main__":
                         emotion = known_analysis_results_map[face["tracking_id"]]["analysis"]["emotion"]
                         race = known_analysis_results_map[face["tracking_id"]]["analysis"]["race"]
                         
-                        # Send the user attributes when found a new face.
-                        # All datas will be packed into JSON and publish to MQTT broker
-                        if flag_new_face == True:
-                            d_userattr = {
-                                "id": recognized_id,
-                                "age": age,
-                                "gender": gender,
-                                "emotion": emotion,
-                                "race": race
-                            }
-                            print("user attributes:\n", d_userattr)
-                            flag_new_face = False
+                        # Create the user attributes when face are entered the frame
+                        # All samples will be appended to the list
+                        # and will be packed into JSON after the face exit and send to MQTT broker
+                        userattr = {
+                            "tracking_id": face["tracking_id"],
+                            "recognized_id": recognized_id,
+                            "age": age,
+                            "gender": gender,
+                            "emotion": emotion,
+                            "race": race
+                        }
+                        # append the user attribute
+                        if age and gender and emotion and race:
+                            l_userattr.append(userattr)
 
                 draw_result(frame, face["bounding_box"], 
                     tracking_id=face["tracking_id"],
@@ -320,11 +415,16 @@ if __name__ == "__main__":
                     gender=gender,
                     emotion=emotion,
                     race=race)
-
-                # draw_result(frame, face["bounding_box"], 
-                #     tracking_id=face["tracking_id"],
-                #     conf=face["confidence"])
         
+        else:
+            if state == 'exit':
+                epoch_exit = time.time()
+                print("exit time=", epoch_exit)
+                json_userattr = generate_userattribute_json(l_userattr, epoch_enter, epoch_exit)
+                print(json_userattr)
+                publish2mqtt(json_userattr)
+                state = 'enter'
+
         draw_bounding_box(frame, roi, (0, 0, 255))
 
         cv2.putText(result_image, f"Traffic : {len(known_tracking_ids)}", (10, 30),
