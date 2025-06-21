@@ -258,7 +258,7 @@ def on_connect(client, userdata, flags, rc):
     else:
         print(f"Failed to connect, return code %d\n" % rc)
 
-def publish2mqtt(json_userattr):
+def mqtt_publish_userattr(json_userattr):
     global cfg
     BROKER_ADDRESS = cfg["mqtt_broker"]
     BROKER_PORT = cfg["mqtt_port"]
@@ -280,7 +280,7 @@ def publish2mqtt(json_userattr):
             # Publish the JSON string to the MQTT topic
             print(f"\nPublishing message to topic: {MQTT_TOPIC_RETAIL}")
             print("Payload:\n", json_userattr)
-            client.publish(MQTT_TOPIC, json_userattr)
+            client.publish(MQTT_TOPIC_RETAIL, json_userattr)
             print("Message published.")
             time.sleep(0.2)
 
@@ -292,6 +292,41 @@ def publish2mqtt(json_userattr):
                 client.loop_stop()
                 client.disconnect()
                 print("Disconnected from MQTT broker.") 
+
+def mqtt_publish_peoplecount(men_count, women_count):
+    global cfg
+    BROKER_ADDRESS = cfg["mqtt_broker"]
+    BROKER_PORT = cfg["mqtt_port"]
+    MQTT_TOPIC_MCOUNT = cfg["mqtt_topics"][1]
+    MQTT_TOPIC_WCOUNT = cfg["mqtt_topics"][2]
+    # Create a new MQTT client instance
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "python_publisher_client")
+    # Assign the on_connect callback function
+    client.on_connect = on_connect
+    try:
+        # Connect to the MQTT broker
+        print(f"Attempting to connect to MQTT broker at {BROKER_ADDRESS}:{BROKER_PORT}...")
+        client.connect(BROKER_ADDRESS, BROKER_PORT, 60) # 60 seconds keepalive
+
+        # Start a loop to process network traffic and callbacks
+        # This is non-blocking and allows for other tasks while connected.
+        client.loop_start()
+
+        # Publish the JSON string to the MQTT topic
+        print(f"\nPublishing message to topic: {MQTT_TOPIC_MCOUNT}, {MQTT_TOPIC_WCOUNT}")
+        client.publish(MQTT_TOPIC_MCOUNT, str(men_count))
+        client.publish(MQTT_TOPIC_WCOUNT, str(women_count))
+        print("Message published.")
+        time.sleep(0.2)
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        # Stop the network loop and disconnect from the broker
+        if client:
+            client.loop_stop()
+            client.disconnect()
+            print("Disconnected from MQTT broker.") 
 
 
 
@@ -377,6 +412,7 @@ if __name__ == "__main__":
                 men_count = men_count + 1
             elif "Woman" in (res["analysis"]["gender"]):
                 women_count = women_count + 1
+            mqtt_publish_peoplecount(men_count, women_count)
 
         if len(faces) > 0:
             if state == 'enter':
@@ -445,7 +481,7 @@ if __name__ == "__main__":
                 print("exit time=", epoch_exit)
                 json_userattr = generate_userattribute_json(l_userattr, epoch_enter, epoch_exit)
                 print(json_userattr)
-                publish2mqtt(json_userattr)
+                mqtt_publish_userattr(json_userattr)
                 state = 'enter'
 
         draw_bounding_box(frame, roi, (0, 0, 255))
