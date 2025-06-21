@@ -1,3 +1,0 @@
-deepface==0.0.93
-tf_keras==2.18.0
-ultralytics==8.3.84
