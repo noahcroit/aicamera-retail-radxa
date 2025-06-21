@@ -1,6 +1,7 @@
 
 import multiprocessing  # <-- Added for multiprocessing
 import time
+import datetime as DT
 import json
 from deepface import DeepFace
 import cv2
@@ -200,6 +201,10 @@ def process_new_face_worker(data_in_queue, data_out_queue):
         result = process_new_face(face, known_faces_list)
         data_out_queue.put(result)
 
+def epoch2iso(epoch):
+    iso = DT.datetime.utcfromtimestamp(epoch).isoformat()
+    return iso
+
 def generate_userattribute_json(l_userattr, epoch_enter, epoch_exit):
     # find the average value of each field of user attributes
     l_age = []
@@ -225,15 +230,19 @@ def generate_userattribute_json(l_userattr, epoch_enter, epoch_exit):
         gender_avg = mode(l_gender)
         emotion_avg = mode(l_emotion)
         race_avg = mode(l_race)
-
+        
+        iso_enter = epoch2iso(epoch_enter)
+        iso_exit = epoch2iso(epoch_exit)
+        duration = epoch_exit - epoch_enter
         # generate JSON
         d_userattr = {
-            "epoch_enter": epoch_enter,
+            "enter time": iso_enter,
+            "exit time": iso_exit,
+            "duration(s)": duration,
             "age": age_avg,
             "gender": gender_avg,
             "emotion": emotion_avg,
             "race": race_avg,
-            "epoch_exit": epoch_exit
         }
         json_userattr = json.dumps(d_userattr, indent=4)
         return json_userattr
@@ -253,7 +262,7 @@ def on_connect(client, userdata, flags, rc):
 
 def publish2mqtt(json_userattr):
     if json_userattr:
-        BROKER_ADDRESS = "192.168.1.37"
+        BROKER_ADDRESS = "192.168.1.128"
         BROKER_PORT = 1883 # Standard unencrypted MQTT port
         MQTT_TOPIC = "aicamera/userattr" # Choose a unique topic to avoid collisions
         # Create a new MQTT client instance
@@ -357,7 +366,7 @@ if __name__ == "__main__":
 
         if len(faces) > 0:
             if state == 'enter':
-                epoch_enter = time.time()
+                epoch_enter = int(time.time())
                 print("enter time=", epoch_enter)
                 state = 'exit'
                 l_userattr = []
@@ -418,7 +427,7 @@ if __name__ == "__main__":
         
         else:
             if state == 'exit':
-                epoch_exit = time.time()
+                epoch_exit = int(time.time())
                 print("exit time=", epoch_exit)
                 json_userattr = generate_userattribute_json(l_userattr, epoch_enter, epoch_exit)
                 print(json_userattr)
