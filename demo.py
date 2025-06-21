@@ -1,4 +1,3 @@
-
 import multiprocessing  # <-- Added for multiprocessing
 import time
 import datetime as DT
@@ -11,6 +10,9 @@ from numpy.linalg import norm
 from ultralytics import YOLO
 import tensorflow as tf
 import paho.mqtt.client as mqtt
+import argparse
+
+
 
 def extract_detected_objects(image, results):
     object_data = []  # List to store detected objects and their details
@@ -251,20 +253,17 @@ def generate_userattribute_json(l_userattr, epoch_enter, epoch_exit):
 
 # Callback function for when the client connects to the MQTT broker
 def on_connect(client, userdata, flags, rc):
-    """
-    Called when the client connects to the broker.
-    rc (return code) = 0 for success.
-    """
     if rc == 0:
         print(f"Successfully connected to MQTT Broker")
     else:
         print(f"Failed to connect, return code %d\n" % rc)
 
 def publish2mqtt(json_userattr):
+    global cfg
+    BROKER_ADDRESS = cfg["mqtt_broker"]
+    BROKER_PORT = cfg["mqtt_port"]
+    MQTT_TOPIC_RETAIL = cfg["mqtt_topics"][0]
     if json_userattr:
-        BROKER_ADDRESS = "192.168.1.128"
-        BROKER_PORT = 1883 # Standard unencrypted MQTT port
-        MQTT_TOPIC = "aicamera/userattr" # Choose a unique topic to avoid collisions
         # Create a new MQTT client instance
         client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "python_publisher_client")
         # Assign the on_connect callback function
@@ -279,7 +278,7 @@ def publish2mqtt(json_userattr):
             client.loop_start()
 
             # Publish the JSON string to the MQTT topic
-            print(f"\nPublishing message to topic: {MQTT_TOPIC}")
+            print(f"\nPublishing message to topic: {MQTT_TOPIC_RETAIL}")
             print("Payload:\n", json_userattr)
             client.publish(MQTT_TOPIC, json_userattr)
             print("Message published.")
@@ -298,6 +297,21 @@ def publish2mqtt(json_userattr):
 
 # In the main loop, modify these parts:
 if __name__ == "__main__":
+    # Initialize parser
+    parser = argparse.ArgumentParser()
+    # Adding optional argument
+    # Read arguments from command line
+    parser.add_argument("-c", "--cfg", help="JSON file for the configuration file of all devices", default='mqtt_config.json')
+    args = parser.parse_args()
+    # Extract MQTT config data from .json
+    try:
+        f = open(args.cfg, 'rb')
+        cfg = json.load(f)
+        f.close()
+    except OSError:
+        logger.error('Configuration file does not exist!')
+        sys.exit()
+
     known_tracking_ids = set()
     known_analysis_results_map = dict()
     known_recognition_results_map = dict()
