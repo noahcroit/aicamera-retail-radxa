@@ -1,0 +1,232 @@
+[
+    {
+        "id": "fcdb149807891209",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "3c9d5041389c5db5",
+        "type": "mqtt in",
+        "z": "fcdb149807891209",
+        "name": "",
+        "topic": "aicamera/userattr",
+        "qos": "0",
+        "datatype": "auto-detect",
+        "broker": "f53e0deba3bec3d8",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 300,
+        "y": 520,
+        "wires": [
+            [
+                "932259a0bfb8cca7",
+                "d5b3bf5d075e44cd"
+            ]
+        ]
+    },
+    {
+        "id": "932259a0bfb8cca7",
+        "type": "debug",
+        "z": "fcdb149807891209",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 300,
+        "y": 440,
+        "wires": []
+    },
+    {
+        "id": "98a97f2e8056c408",
+        "type": "ui_table",
+        "z": "fcdb149807891209",
+        "group": "908c93d77a37679c",
+        "name": "user_attributes",
+        "order": 1,
+        "width": 20,
+        "height": 15,
+        "columns": [],
+        "outputs": 0,
+        "cts": false,
+        "x": 880,
+        "y": 520,
+        "wires": []
+    },
+    {
+        "id": "d5b3bf5d075e44cd",
+        "type": "function",
+        "z": "fcdb149807891209",
+        "name": "generate_payload",
+        "func": "var tableData = flow.get(\"savedData\") || [];\ntableData.unshift(msg.payload);\nmsg.payload = tableData;\nflow.set(\"savedData\", tableData);\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 590,
+        "y": 520,
+        "wires": [
+            [
+                "98a97f2e8056c408"
+            ]
+        ]
+    },
+    {
+        "id": "eeb4f24c900f3898",
+        "type": "inject",
+        "z": "fcdb149807891209",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "5",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 390,
+        "y": 640,
+        "wires": [
+            [
+                "280e31dc57ccc863"
+            ]
+        ]
+    },
+    {
+        "id": "280e31dc57ccc863",
+        "type": "function",
+        "z": "fcdb149807891209",
+        "name": "updateRow",
+        "func": "msg.payload = \n{\n    \"command\": \"updateRow\" // or \"updateRow\", \"replaceData\", etc.\n    // \"arguments\": [ ... ] // Optional arguments for the command\n}\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 630,
+        "y": 640,
+        "wires": [
+            [
+                "98a97f2e8056c408"
+            ]
+        ]
+    },
+    {
+        "id": "905126da937d07c7",
+        "type": "ui_button",
+        "z": "fcdb149807891209",
+        "name": "",
+        "group": "908c93d77a37679c",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": "bt_clear",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "",
+        "payload": "",
+        "payloadType": "str",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 360,
+        "y": 740,
+        "wires": [
+            [
+                "fd1db2b9f074d380"
+            ]
+        ]
+    },
+    {
+        "id": "fd1db2b9f074d380",
+        "type": "function",
+        "z": "fcdb149807891209",
+        "name": "clearTable",
+        "func": "flow.set(\"savedData\", null);\nmsg.payload = []\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 630,
+        "y": 740,
+        "wires": [
+            [
+                "98a97f2e8056c408"
+            ]
+        ]
+    },
+    {
+        "id": "f53e0deba3bec3d8",
+        "type": "mqtt-broker",
+        "name": "",
+        "broker": "localhost",
+        "port": 1883,
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "908c93d77a37679c",
+        "type": "ui_group",
+        "name": "Vending_Camera_Demo",
+        "tab": "bbb1d6f39e66dc1d",
+        "order": 1,
+        "disp": true,
+        "width": "20",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "bbb1d6f39e66dc1d",
+        "type": "ui_tab",
+        "name": "Home",
+        "icon": "dashboard",
+        "disabled": false,
+        "hidden": false
+    }
+]
