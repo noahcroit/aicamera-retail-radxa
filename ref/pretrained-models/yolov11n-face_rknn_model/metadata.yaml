@@ -1,0 +1,17 @@
+description: Ultralytics YOLO11n model trained on datasets/widerface.yaml
+author: Ultralytics
+date: '2025-03-07T01:12:00.476903'
+version: 8.3.85
+license: AGPL-3.0 License (https://ultralytics.com/license)
+docs: https://docs.ultralytics.com
+stride: 32
+task: detect
+batch: 1
+imgsz:
+- 640
+- 640
+names:
+  0: face
+args:
+  batch: 1
+  name: rk3588
