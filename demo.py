@@ -247,7 +247,7 @@ def generate_userattribute_json(l_userattr, epoch_enter, epoch_exit):
             "race": race_avg,
         }
         json_userattr = json.dumps(d_userattr, indent=4)
-        return json_userattr
+        return json_userattr, d_userattr
     except:
         return None
 
@@ -408,16 +408,10 @@ if __name__ == "__main__":
         while not process_new_face_data_out_queue.empty():
             res = process_new_face_data_out_queue.get()
             known_analysis_results_map[res["tracking_id"]] = res
-            if "Man" in (res["analysis"]["gender"]):
-                men_count = men_count + 1
-            elif "Woman" in (res["analysis"]["gender"]):
-                women_count = women_count + 1
-            mqtt_publish_peoplecount(men_count, women_count)
 
         if len(faces) > 0:
             if state == 'enter':
                 epoch_enter = int(time.time())
-                print("enter time=", epoch_enter)
                 state = 'exit'
                 l_userattr = []
 
@@ -478,10 +472,14 @@ if __name__ == "__main__":
         else:
             if state == 'exit':
                 epoch_exit = int(time.time())
-                print("exit time=", epoch_exit)
-                json_userattr = generate_userattribute_json(l_userattr, epoch_enter, epoch_exit)
+                json_userattr, d_userattr = generate_userattribute_json(l_userattr, epoch_enter, epoch_exit)
                 print(json_userattr)
+                if d_userattr['gender'] == 'Man':
+                    men_count += 1                         
+                elif d_userattr['gender'] == 'Woman':
+                    women_count += 1                         
                 mqtt_publish_userattr(json_userattr)
+                mqtt_publish_peoplecount(men_count, women_count)
                 state = 'enter'
 
         draw_bounding_box(frame, roi, (0, 0, 255))
