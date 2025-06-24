@@ -240,7 +240,7 @@ def generate_userattribute_json(l_userattr, epoch_enter, epoch_exit):
         d_userattr = {
             "enter time": iso_enter,
             "exit time": iso_exit,
-            "duration(s)": duration,
+            "duration": duration,
             "age": age_avg,
             "gender": gender_avg,
             "emotion": emotion_avg,
@@ -249,7 +249,7 @@ def generate_userattribute_json(l_userattr, epoch_enter, epoch_exit):
         json_userattr = json.dumps(d_userattr, indent=4)
         return json_userattr, d_userattr
     except:
-        return None
+        return None, None
 
 # Callback function for when the client connects to the MQTT broker
 def on_connect(client, userdata, flags, rc):
@@ -473,19 +473,21 @@ if __name__ == "__main__":
             if state == 'exit':
                 epoch_exit = int(time.time())
                 json_userattr, d_userattr = generate_userattribute_json(l_userattr, epoch_enter, epoch_exit)
-                print(json_userattr)
-                if d_userattr['gender'] == 'Man':
-                    men_count += 1                         
-                elif d_userattr['gender'] == 'Woman':
-                    women_count += 1                         
-                mqtt_publish_userattr(json_userattr)
-                mqtt_publish_peoplecount(men_count, women_count)
+                if json_userattr:
+                    if d_userattr['duration'] >= 3:
+                        if d_userattr['gender'].split()[0] == 'Man':
+                            men_count += 1                         
+                            mqtt_publish_peoplecount(men_count, women_count)
+                        elif d_userattr['gender'].split()[0] == 'Woman':
+                            women_count += 1                         
+                            mqtt_publish_peoplecount(men_count, women_count)
+                        mqtt_publish_userattr(json_userattr)
                 state = 'enter'
 
         draw_bounding_box(frame, roi, (0, 0, 255))
-
-        cv2.putText(result_image, f"Traffic : {len(known_tracking_ids)}", (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        
+        #cv2.putText(result_image, f"Traffic : {len(known_tracking_ids)}", (10, 30),
+        #    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
         cv2.putText(result_image, f"Men : {men_count}", (10, 50),
             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
@@ -495,7 +497,6 @@ if __name__ == "__main__":
 
         # Display the frame
         cv2.imshow('Real-time Face Recognition', frame)
-
         cv2.imshow('Marketing data', result_image)
         
         # Check for 'q' key to quit
