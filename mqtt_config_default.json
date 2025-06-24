@@ -5,5 +5,6 @@
         "aicamera/userattr",
         "aicamera/mcount",
         "aicamera/wcount"
-    ]
+    ],
+    "camera": "/dev/video11"
 }

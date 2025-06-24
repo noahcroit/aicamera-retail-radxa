@@ -370,8 +370,8 @@ if __name__ == "__main__":
     )
     worker.start()
     
-    #cap = cv2.VideoCapture("/dev/video11")
-    cap = cv2.VideoCapture("/dev/v4l/by-id/usb-046d_C922_Pro_Stream_Webcam_5B3499FF-video-index0")
+    cam_source = cfg["camera"]
+    cap = cv2.VideoCapture(cam_source)
     print("Real-time Face Recognition Started!")
     print("Press 'q' to quit")
     
