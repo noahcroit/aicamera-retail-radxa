@@ -203,7 +203,7 @@ def process_new_face_worker(data_in_queue, data_out_queue):
         result = process_new_face(face, known_faces_list)
         data_out_queue.put(result)
 
-def process_mqtt_worker(q_mqtt)
+def process_mqtt_worker(q_mqtt):
     global cfg
     BROKER_ADDRESS = cfg["mqtt_broker"]
     BROKER_PORT = cfg["mqtt_port"]
@@ -212,8 +212,8 @@ def process_mqtt_worker(q_mqtt)
     MQTT_TOPIC_WCOUNT = cfg["mqtt_topics"][2]
 
     while True:
-        if not q_userattr.empty():
-            userattr, men_count, women_count = q_userattr.get()        
+        if not q_mqtt.empty():
+            userattr, men_count, women_count = q_mqtt.get()        
             if userattr:
                 # Create a new MQTT client instance
                 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "python_publisher_client")
@@ -347,6 +347,7 @@ if __name__ == "__main__":
         args=(
             mqtt_queue, 
         )
+    )
     worker.start()
     worker_mqtt.start()
     
@@ -358,7 +359,6 @@ if __name__ == "__main__":
     # Load YOLOv11 face detection model
     #model = YOLO('pretrained-models/yolov11n-face.pt', verbose=False)
     model = YOLO('ref/pretrained-models/yolov11n-face_rknn_model', verbose=False) 
-    
     
     state = 'enter'
     while True:
@@ -401,7 +401,6 @@ if __name__ == "__main__":
 
                 # Check that the center of the face is in the ROI or not.
                 if is_point_in_bounding_box(face_center, roi):
-
                     # Check that the detected face is new face enter into the frame or not.
                     if not (face["tracking_id"] in known_tracking_ids):
                         # If a new face is detected, add it to the worker's input queue
