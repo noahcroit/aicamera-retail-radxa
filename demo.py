@@ -250,49 +250,22 @@ def epoch2iso(epoch):
     iso = DT.datetime.utcfromtimestamp(epoch).isoformat()
     return iso
 
-def generate_userattribute_json(l_userattr, epoch_enter, epoch_exit):
-    # find the average value of each field of user attributes
-    l_age = []
-    l_gender = []
-    l_emotion = []
-    l_race = []
-    try:
-        for userattr in l_userattr:
-            age = userattr['age']
-            gender = userattr['gender']
-            emotion = userattr['emotion']
-            race = userattr['race']
-            if age:
-                l_age.append(age)
-            if gender:
-                l_gender.append(gender)
-            if emotion:
-                l_emotion.append(emotion)
-            if race:
-                l_race.append(race)
-        from statistics import mode
-        age_avg = mode(l_age)
-        gender_avg = mode(l_gender)
-        emotion_avg = mode(l_emotion)
-        race_avg = mode(l_race)
-        
-        iso_enter = epoch2iso(epoch_enter)
-        iso_exit = epoch2iso(epoch_exit)
-        duration = epoch_exit - epoch_enter
-        # generate JSON
-        d_userattr = {
-            "enter time": iso_enter,
-            "exit time": iso_exit,
-            "duration": duration,
-            "age": age_avg,
-            "gender": gender_avg,
-            "emotion": emotion_avg,
-            "race": race_avg,
+def generate_userattribute_json(userattr, epoch_enter, epoch_exit):
+    iso_enter = epoch2iso(epoch_enter)
+    iso_exit = epoch2iso(epoch_exit)
+    duration = epoch_exit - epoch_enter
+    # generate JSON
+    d_userattr = {
+        "enter time": iso_enter,
+        "exit time": iso_exit,
+        "duration": duration,
+        "age": userattr["age"],
+        "gender": userattr["gender"],
+        "emotion": userattr["emotion"],
+        "race": userattr["race"]
         }
-        json_userattr = json.dumps(d_userattr, indent=4)
-        return json_userattr, d_userattr
-    except:
-        return None, None
+    json_userattr = json.dumps(d_userattr, indent=4)
+    return json_userattr
 
 # Callback function for when the client connects to the MQTT broker
 def on_connect(client, userdata, flags, rc):
@@ -359,10 +332,11 @@ if __name__ == "__main__":
     # Load YOLOv11 face detection model
     #model = YOLO('pretrained-models/yolov11n-face.pt', verbose=False)
     model = YOLO('ref/pretrained-models/yolov11n-face_rknn_model', verbose=False) 
-    
+   
+    DURATION_THRESHOLD = 1
     n_faces_prev = 0
+    faces_prev = []
     face_activity_collection = {}    
-    state = 'enter'
     while True:
         # set the number of faces to zero at begin
         n_faces_curr = 0
@@ -399,12 +373,6 @@ if __name__ == "__main__":
             known_analysis_results_map[res["tracking_id"]] = res
 
         if n_faces_curr > 0:
-            """
-            if state == 'enter':
-                epoch_enter = int(time.time())
-                state = 'exit'
-                l_userattr = []
-            """
             for face in faces:
                 # Find face center point
                 face_center = find_bounding_box_center(face["bounding_box"])
@@ -452,11 +420,7 @@ if __name__ == "__main__":
                         # add the the collection if it is a new analyzed face
                         if not face["tracking_id"] in face_activity_collection:
                             epoch_enter = int(time.time())
-                            face_activity_collection.update({face["tracking_id"] : {userattr, epoch_enter})
-
-                        # append the user attribute
-                        if age and gender and emotion and race:
-                            l_userattr.append(userattr)
+                            face_activity_collection.update({face["tracking_id"] : (userattr, epoch_enter)})
 
                 draw_result(frame, face["bounding_box"], 
                     tracking_id=face["tracking_id"],
@@ -467,7 +431,6 @@ if __name__ == "__main__":
                     gender=gender,
                     emotion=emotion,
                     race=race)
-        
         else:
             pass
         
@@ -476,31 +439,24 @@ if __name__ == "__main__":
             for face_prev in faces_prev:
                 if not face_prev in faces_curr:
                     exit_id = face_prev
-                    userattr_exit = face_activity_collection[exit_id]
+                    userattr, epoch_enter = face_activity_collection[exit_id]
+                    epoch_exit = int(time.time())
                     face_activity_collection.pop(exit_id)
-                    print("ID of exit face={}".format(exit_id))
-                    print("Exited user=\n", userattr_exit)
+                    if epoch_exit - epoch_enter >= DURATION_THRESHOLD:
+                        if userattr['gender'].split()[0] == 'Man':
+                            men_count += 1                         
+                        elif userattr['gender'].split()[0] == 'Woman':
+                            women_count += 1
+                        json_userattr = generate_userattribute_json(userattr, epoch_enter, epoch_exit)
+                        print("ID of exit face={}".format(exit_id))
+                        print("JSON=\n{}".format(json_userattr))
+                        mqtt_queue.put((json_userattr, men_count, women_count))
         
         # update the previous value
         n_faces_prev = n_faces_curr
-        face_prev = faces_curr
-            """
-            if state == 'exit':
-                epoch_exit = int(time.time())
-                json_userattr, d_userattr = generate_userattribute_json(l_userattr, epoch_enter, epoch_exit)
-                if json_userattr:
-                    if d_userattr['duration'] >= 3:
-                        if d_userattr['gender'].split()[0] == 'Man':
-                            men_count += 1                         
-                        elif d_userattr['gender'].split()[0] == 'Woman':
-                            women_count += 1
-                        mqtt_queue.put((json_userattr, men_count, women_count))
-                state = 'enter'
-            """
-        draw_bounding_box(frame, roi, (0, 0, 255))
+        faces_prev = faces_curr
         
-        #cv2.putText(result_image, f"Traffic : {len(known_tracking_ids)}", (10, 30),
-        #    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        draw_bounding_box(frame, roi, (0, 0, 255))
 
         cv2.putText(result_image, f"Men : {men_count}", (10, 50),
             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
