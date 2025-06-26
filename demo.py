@@ -203,6 +203,49 @@ def process_new_face_worker(data_in_queue, data_out_queue):
         result = process_new_face(face, known_faces_list)
         data_out_queue.put(result)
 
+def process_mqtt_worker(q_mqtt)
+    global cfg
+    BROKER_ADDRESS = cfg["mqtt_broker"]
+    BROKER_PORT = cfg["mqtt_port"]
+    MQTT_TOPIC_RETAIL = cfg["mqtt_topics"][0]
+    MQTT_TOPIC_MCOUNT = cfg["mqtt_topics"][1]
+    MQTT_TOPIC_WCOUNT = cfg["mqtt_topics"][2]
+
+    while True:
+        if not q_userattr.empty():
+            userattr, men_count, women_count = q_userattr.get()        
+            if userattr:
+                # Create a new MQTT client instance
+                client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "python_publisher_client")
+                # Assign the on_connect callback function
+                client.on_connect = on_connect
+                try:
+                    # Connect to the MQTT broker
+                    print(f"Attempting to connect to MQTT broker at {BROKER_ADDRESS}:{BROKER_PORT}...")
+                    client.connect(BROKER_ADDRESS, BROKER_PORT, 60) # 60 seconds keepalive
+
+                    # Start a loop to process network traffic and callbacks
+                    # This is non-blocking and allows for other tasks while connected.
+                    client.loop_start()
+
+                    # Publish the JSON string to the MQTT topic
+                    client.publish(MQTT_TOPIC_RETAIL, userattr)
+                    client.publish(MQTT_TOPIC_MCOUNT, str(men_count))
+                    client.publish(MQTT_TOPIC_WCOUNT, str(women_count))
+                    print("Message published.")
+                    time.sleep(0.2)
+
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+                finally:
+                    # Stop the network loop and disconnect from the broker
+                    if client:
+                        client.loop_stop()
+                        client.disconnect()
+                        print("Disconnected from MQTT broker.") 
+
+                
+
 def epoch2iso(epoch):
     iso = DT.datetime.utcfromtimestamp(epoch).isoformat()
     return iso
@@ -258,76 +301,6 @@ def on_connect(client, userdata, flags, rc):
     else:
         print(f"Failed to connect, return code %d\n" % rc)
 
-def mqtt_publish_userattr(json_userattr):
-    global cfg
-    BROKER_ADDRESS = cfg["mqtt_broker"]
-    BROKER_PORT = cfg["mqtt_port"]
-    MQTT_TOPIC_RETAIL = cfg["mqtt_topics"][0]
-    if json_userattr:
-        # Create a new MQTT client instance
-        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "python_publisher_client")
-        # Assign the on_connect callback function
-        client.on_connect = on_connect
-        try:
-            # Connect to the MQTT broker
-            print(f"Attempting to connect to MQTT broker at {BROKER_ADDRESS}:{BROKER_PORT}...")
-            client.connect(BROKER_ADDRESS, BROKER_PORT, 60) # 60 seconds keepalive
-
-            # Start a loop to process network traffic and callbacks
-            # This is non-blocking and allows for other tasks while connected.
-            client.loop_start()
-
-            # Publish the JSON string to the MQTT topic
-            print(f"\nPublishing message to topic: {MQTT_TOPIC_RETAIL}")
-            print("Payload:\n", json_userattr)
-            client.publish(MQTT_TOPIC_RETAIL, json_userattr)
-            print("Message published.")
-            time.sleep(0.2)
-
-        except Exception as e:
-            print(f"An error occurred: {e}")
-        finally:
-            # Stop the network loop and disconnect from the broker
-            if client:
-                client.loop_stop()
-                client.disconnect()
-                print("Disconnected from MQTT broker.") 
-
-def mqtt_publish_peoplecount(men_count, women_count):
-    global cfg
-    BROKER_ADDRESS = cfg["mqtt_broker"]
-    BROKER_PORT = cfg["mqtt_port"]
-    MQTT_TOPIC_MCOUNT = cfg["mqtt_topics"][1]
-    MQTT_TOPIC_WCOUNT = cfg["mqtt_topics"][2]
-    # Create a new MQTT client instance
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "python_publisher_client")
-    # Assign the on_connect callback function
-    client.on_connect = on_connect
-    try:
-        # Connect to the MQTT broker
-        print(f"Attempting to connect to MQTT broker at {BROKER_ADDRESS}:{BROKER_PORT}...")
-        client.connect(BROKER_ADDRESS, BROKER_PORT, 60) # 60 seconds keepalive
-
-        # Start a loop to process network traffic and callbacks
-        # This is non-blocking and allows for other tasks while connected.
-        client.loop_start()
-
-        # Publish the JSON string to the MQTT topic
-        print(f"\nPublishing message to topic: {MQTT_TOPIC_MCOUNT}, {MQTT_TOPIC_WCOUNT}")
-        client.publish(MQTT_TOPIC_MCOUNT, str(men_count))
-        client.publish(MQTT_TOPIC_WCOUNT, str(women_count))
-        print("Message published.")
-        time.sleep(0.2)
-
-    except Exception as e:
-        print(f"An error occurred: {e}")
-    finally:
-        # Stop the network loop and disconnect from the broker
-        if client:
-            client.loop_stop()
-            client.disconnect()
-            print("Disconnected from MQTT broker.") 
-
 
 
 # In the main loop, modify these parts:
@@ -361,6 +334,7 @@ if __name__ == "__main__":
     # Set up multiprocessing queues and worker process
     process_new_face_data_in_queue = multiprocessing.Queue()
     process_new_face_data_out_queue = multiprocessing.Queue()
+    mqtt_queue = multiprocessing.Queue()
     worker = multiprocessing.Process(
         target=process_new_face_worker, 
         args=(
@@ -368,7 +342,13 @@ if __name__ == "__main__":
             process_new_face_data_out_queue
         )
     )
+    worker_mqtt = multiprocessing.Process(
+        target=process_mqtt_worker, 
+        args=(
+            mqtt_queue, 
+        )
     worker.start()
+    worker_mqtt.start()
     
     cam_source = cfg["camera"]
     cap = cv2.VideoCapture(cam_source)
@@ -477,11 +457,9 @@ if __name__ == "__main__":
                     if d_userattr['duration'] >= 3:
                         if d_userattr['gender'].split()[0] == 'Man':
                             men_count += 1                         
-                            mqtt_publish_peoplecount(men_count, women_count)
                         elif d_userattr['gender'].split()[0] == 'Woman':
-                            women_count += 1                         
-                            mqtt_publish_peoplecount(men_count, women_count)
-                        mqtt_publish_userattr(json_userattr)
+                            women_count += 1
+                        mqtt_queue.put((json_userattr, men_count, women_count))
                 state = 'enter'
 
         draw_bounding_box(frame, roi, (0, 0, 255))
@@ -509,4 +487,6 @@ if __name__ == "__main__":
     cv2.destroyAllWindows()
     # Terminate the worker process
     worker.terminate()
+    worker_mqtt.terminate()
     worker.join()
+    worker_mqtt.join()
