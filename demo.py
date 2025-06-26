@@ -360,8 +360,15 @@ if __name__ == "__main__":
     #model = YOLO('pretrained-models/yolov11n-face.pt', verbose=False)
     model = YOLO('ref/pretrained-models/yolov11n-face_rknn_model', verbose=False) 
     
+    n_faces_prev = 0
+    face_activity_collection = {}    
     state = 'enter'
     while True:
+        # set the number of faces to zero at begin
+        n_faces_curr = 0
+        faces_curr = []
+        
+        # capture the frame    
         ret, frame = cap.read()
         if not ret:
             print("Failed to grab frame")
@@ -381,20 +388,23 @@ if __name__ == "__main__":
         # results = model(frame, verbose=False)
         faces = []
         
+        # Find the number of faces in the current frame
         if len(results) > 0:
             faces = extract_detected_objects(frame, results)
+            n_faces_curr = len(faces)
 
         # Poll worker output and update known analysis results
         while not process_new_face_data_out_queue.empty():
             res = process_new_face_data_out_queue.get()
             known_analysis_results_map[res["tracking_id"]] = res
 
-        if len(faces) > 0:
+        if n_faces_curr > 0:
+            """
             if state == 'enter':
                 epoch_enter = int(time.time())
                 state = 'exit'
                 l_userattr = []
-
+            """
             for face in faces:
                 # Find face center point
                 face_center = find_bounding_box_center(face["bounding_box"])
@@ -416,6 +426,10 @@ if __name__ == "__main__":
 
                 if face["tracking_id"]:
                     if face["tracking_id"] in known_analysis_results_map:
+                        # add face to the faces_current
+                        faces_curr.append(face["tracking_id"])
+
+                        # extract user attributes
                         recognized_id = known_analysis_results_map[face["tracking_id"]]["recognized_id"]
                         recognition_conf = known_analysis_results_map[face["tracking_id"]]["recognition_conf"]
                         age = known_analysis_results_map[face["tracking_id"]]["analysis"]["age"]
@@ -434,6 +448,12 @@ if __name__ == "__main__":
                             "emotion": emotion,
                             "race": race
                         }
+                        
+                        # add the the collection if it is a new analyzed face
+                        if not face["tracking_id"] in face_activity_collection:
+                            epoch_enter = int(time.time())
+                            face_activity_collection.update({face["tracking_id"] : {userattr, epoch_enter})
+
                         # append the user attribute
                         if age and gender and emotion and race:
                             l_userattr.append(userattr)
@@ -449,6 +469,22 @@ if __name__ == "__main__":
                     race=race)
         
         else:
+            pass
+        
+        # when the number of current face decreased from the previous frame's
+        if n_faces_curr < n_faces_prev:
+            for face_prev in faces_prev:
+                if not face_prev in faces_curr:
+                    exit_id = face_prev
+                    userattr_exit = face_activity_collection[exit_id]
+                    face_activity_collection.pop(exit_id)
+                    print("ID of exit face={}".format(exit_id))
+                    print("Exited user=\n", userattr_exit)
+        
+        # update the previous value
+        n_faces_prev = n_faces_curr
+        face_prev = faces_curr
+            """
             if state == 'exit':
                 epoch_exit = int(time.time())
                 json_userattr, d_userattr = generate_userattribute_json(l_userattr, epoch_enter, epoch_exit)
@@ -460,7 +496,7 @@ if __name__ == "__main__":
                             women_count += 1
                         mqtt_queue.put((json_userattr, men_count, women_count))
                 state = 'enter'
-
+            """
         draw_bounding_box(frame, roi, (0, 0, 255))
         
         #cv2.putText(result_image, f"Traffic : {len(known_tracking_ids)}", (10, 30),
